@@ -1,3 +1,14 @@
+"""
+Autores:
+- Héctor Zamorano García
+
+Funcionalidades Implementadas:
+- Búsqueda y evaluación booleana (AND, NOT) usando algoritmo de cruce por punteros.
+- Búsquedas posicionales (uso de comillas).
+- Búsqueda semántica (Sentence-BERT, KDTree).
+- Reranking semántico.
+"""
+
 # versión 1.2
 
 import json
@@ -658,55 +669,56 @@ class SAR_Indexer:
 
         terms = [t.lower() for t in terms]
 
-        # Verificar que todos los términos existen en el índice
         for t in terms:
             if t not in self.index:
                 return []
 
-        # Si solo hay un término, devolver su posting list
         if len(terms) == 1:
             return [artid for artid, _ in self.index[terms[0]]]
 
-        # Construir diccionario artid -> set(posiciones) para cada término
-        postings = []
-        for t in terms:
-            d = {}
-            for artid, positions in self.index[t]:
-                d[artid] = set(positions)
-            postings.append(d)
+        # Intersección posicional pairwise usando punteros (algoritmo teórico)
+        current_p = self.index[terms[0]]
 
-        # Encontrar artículos comunes a todos los términos usando merge
-        common_artids = sorted(postings[0].keys())
-        for k in range(1, len(postings)):
-            new_common = []
-            keys_k = sorted(postings[k].keys())
-            a, b = 0, 0
-            while a < len(common_artids) and b < len(keys_k):
-                if common_artids[a] == keys_k[b]:
-                    new_common.append(common_artids[a])
-                    a += 1
-                    b += 1
-                elif common_artids[a] < keys_k[b]:
-                    a += 1
+        for k in range(1, len(terms)):
+            next_p = self.index[terms[k]]
+            merged_p = []
+            
+            i, j = 0, 0
+            while i < len(current_p) and j < len(next_p):
+                artid_1, pos_1 = current_p[i]
+                artid_2, pos_2 = next_p[j]
+                
+                if artid_1 == artid_2:
+                    # Mismo artículo, intersectar posiciones con punteros
+                    pos_matches = []
+                    pi, pj = 0, 0
+                    while pi < len(pos_1) and pj < len(pos_2):
+                        diff = pos_2[pj] - pos_1[pi]
+                        if diff == 1:
+                            pos_matches.append(pos_2[pj])
+                            pi += 1
+                            pj += 1
+                        elif diff > 1:
+                            # pos_2 está muy adelante, avanzar pos_1
+                            pi += 1
+                        else:
+                            # pos_2 está por detrás o en la misma posición, avanzar pos_2
+                            pj += 1
+                            
+                    if len(pos_matches) > 0:
+                        merged_p.append((artid_1, pos_matches))
+                    i += 1
+                    j += 1
+                elif artid_1 < artid_2:
+                    i += 1
                 else:
-                    b += 1
-            common_artids = new_common
+                    j += 1
+                    
+            current_p = merged_p
+            if not current_p:
+                return []
 
-        # Para cada artículo común, verificar posiciones consecutivas
-        result = []
-        for artid in common_artids:
-            positions_0 = sorted(postings[0][artid])
-            for start_pos in positions_0:
-                found = True
-                for k in range(1, len(terms)):
-                    if (start_pos + k) not in postings[k][artid]:
-                        found = False
-                        break
-                if found:
-                    result.append(artid)
-                    break
-
-        return result
+        return [artid for artid, _ in current_p]
 
 
 
