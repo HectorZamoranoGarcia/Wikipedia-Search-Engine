@@ -1,1 +1,10 @@
 nltk
+numpy
+spacy
+torch
+transformers
+sentence-transformers
+scikit-learn
+ipykernel
+ipywidgets
+
